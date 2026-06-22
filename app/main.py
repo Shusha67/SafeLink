@@ -1,12 +1,13 @@
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 from app.cache import CacheManager
 from app.scanner import Scanner
 from app.messaging.telegram import TelegramAdapter
+from app.schemas import HistoryResponse, ScanRecord, StatsResponse
 from app.url_extractor import extract_urls
 from app.exceptions import SafeLinkError
 
@@ -76,6 +77,26 @@ async def api_scan(request: Request):
         report = await scanner.scan(url)
         results.append({"url": url, "report": report})
     return {"results": results}
+
+
+@app.get("/api/dashboard/stats", response_model=StatsResponse)
+async def dashboard_stats():
+    stats = await cache.get_stats()
+    return StatsResponse(**stats)
+
+
+@app.get("/api/dashboard/history", response_model=HistoryResponse)
+async def dashboard_history(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+):
+    items, total = await cache.get_history(page, page_size)
+    return HistoryResponse(
+        items=[ScanRecord(**vars(item)) for item in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @app.get("/health")

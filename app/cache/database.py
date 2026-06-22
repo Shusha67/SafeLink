@@ -68,6 +68,77 @@ class DatabaseCache:
             logger.exception("database cache read failed for url=%s", url)
             return None
 
+    async def get_stats(self) -> dict:
+        try:
+            async with aiosqlite.connect(self._db_path) as db:
+                cursor = await db.execute(
+                    "SELECT COUNT(*), COALESCE(AVG(score), 0) FROM scan_cache"
+                )
+                total, avg_score = await cursor.fetchone()
+
+                cursor = await db.execute(
+                    "SELECT COUNT(*) FROM scan_cache WHERE score >= 85"
+                )
+                (safe_count,) = await cursor.fetchone()
+
+                cursor = await db.execute(
+                    "SELECT COUNT(*) FROM scan_cache WHERE score >= 50 AND score < 85"
+                )
+                (suspicious_count,) = await cursor.fetchone()
+
+                cursor = await db.execute(
+                    "SELECT COUNT(*) FROM scan_cache WHERE score < 50"
+                )
+                (dangerous_count,) = await cursor.fetchone()
+
+                return {
+                    "total_scans": total,
+                    "safe_count": safe_count,
+                    "suspicious_count": suspicious_count,
+                    "dangerous_count": dangerous_count,
+                    "average_score": round(avg_score, 2),
+                }
+        except Exception:
+            logger.exception("failed to fetch stats")
+            return {
+                "total_scans": 0,
+                "safe_count": 0,
+                "suspicious_count": 0,
+                "dangerous_count": 0,
+                "average_score": 0.0,
+            }
+
+    async def get_history(self, page: int, page_size: int) -> tuple[list[CachedScan], int]:
+        try:
+            async with aiosqlite.connect(self._db_path) as db:
+                db.row_factory = aiosqlite.Row
+
+                cursor = await db.execute("SELECT COUNT(*) FROM scan_cache")
+                (total,) = await cursor.fetchone()
+
+                offset = (page - 1) * page_size
+                cursor = await db.execute(
+                    "SELECT * FROM scan_cache ORDER BY scanned_at DESC LIMIT ? OFFSET ?",
+                    (page_size, offset),
+                )
+                rows = await cursor.fetchall()
+                items = [
+                    CachedScan(
+                        url=row["url"],
+                        score=row["score"],
+                        ssl_valid=bool(row["ssl_valid"]),
+                        domain_age_days=row["domain_age_days"],
+                        google_safe=bool(row["google_safe"]),
+                        details=row["details"],
+                        scanned_at=row["scanned_at"],
+                    )
+                    for row in rows
+                ]
+                return items, total
+        except Exception:
+            logger.exception("failed to fetch history")
+            return [], 0
+
     async def put(self, scan: CachedScan) -> None:
         try:
             async with aiosqlite.connect(self._db_path) as db:

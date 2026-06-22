@@ -33,6 +33,12 @@ class CacheManager:
 
         return None
 
+    async def get_stats(self) -> dict:
+        return await self._db.get_stats()
+
+    async def get_history(self, page: int, page_size: int) -> tuple[list, int]:
+        return await self._db.get_history(page, page_size)
+
     async def put(
         self,
         url: str,
