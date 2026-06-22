@@ -1,7 +1,9 @@
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 from app.cache import CacheManager
@@ -10,6 +12,8 @@ from app.messaging.telegram import TelegramAdapter
 from app.schemas import HistoryResponse, ScanRecord, StatsResponse
 from app.url_extractor import extract_urls
 from app.exceptions import SafeLinkError
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -102,3 +106,11 @@ async def dashboard_history(
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

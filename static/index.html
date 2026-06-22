@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SafeLink Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#eef2ff', 100: '#e0e7ff', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 900: '#312e81' },
+            safe: '#22c55e',
+            suspicious: '#eab308',
+            dangerous: '#ef4444',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fade-in 0.35s ease-out; }
+    @keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(99,102,241,0.4); } 70% { box-shadow: 0 0 0 10px rgba(99,102,241,0); } 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0); } }
+    .scan-pulse { animation: pulse-ring 1.2s ease-out infinite; }
+    .score-bar { transition: width 0.6s ease-out; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-200 sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-brand-600 flex items-center justify-center">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+        </div>
+        <h1 class="text-xl font-bold text-gray-900">SafeLink</h1>
+        <span class="text-xs font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full">Dashboard</span>
+      </div>
+      <div id="connection-status" class="flex items-center gap-1.5 text-xs text-gray-400">
+        <span class="w-2 h-2 rounded-full bg-gray-300"></span>
+        Connecting...
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+
+    <!-- Scan Input -->
+    <section class="animate-fade-in">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Scan a URL</h2>
+        <form id="scan-form" class="flex flex-col sm:flex-row gap-3">
+          <input
+            id="scan-input"
+            type="text"
+            placeholder="Paste a URL to check, e.g. https://example.com"
+            class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition"
+          />
+          <button
+            id="scan-btn"
+            type="submit"
+            class="px-6 py-2.5 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Scan
+          </button>
+        </form>
+        <div id="scan-result" class="mt-4 hidden"></div>
+      </div>
+    </section>
+
+    <!-- Stats Cards -->
+    <section>
+      <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Overview</h2>
+      <div id="stats-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Skeleton loaders -->
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 animate-pulse"><div class="h-4 bg-gray-200 rounded w-24 mb-3"></div><div class="h-8 bg-gray-200 rounded w-16"></div></div>
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 animate-pulse"><div class="h-4 bg-gray-200 rounded w-24 mb-3"></div><div class="h-8 bg-gray-200 rounded w-16"></div></div>
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 animate-pulse"><div class="h-4 bg-gray-200 rounded w-24 mb-3"></div><div class="h-8 bg-gray-200 rounded w-16"></div></div>
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 animate-pulse"><div class="h-4 bg-gray-200 rounded w-24 mb-3"></div><div class="h-8 bg-gray-200 rounded w-16"></div></div>
+      </div>
+    </section>
+
+    <!-- History Table -->
+    <section class="animate-fade-in">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Scan History</h2>
+          <div id="history-meta" class="text-xs text-gray-400"></div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                <th class="px-6 py-3">URL</th>
+                <th class="px-6 py-3 w-32">Score</th>
+                <th class="px-6 py-3 w-24 text-center">SSL</th>
+                <th class="px-6 py-3 w-28 text-center">Domain Age</th>
+                <th class="px-6 py-3 w-24 text-center">Google SB</th>
+                <th class="px-6 py-3 w-40">Scanned</th>
+              </tr>
+            </thead>
+            <tbody id="history-body" class="divide-y divide-gray-50">
+              <tr><td colspan="6" class="px-6 py-12 text-center text-gray-400">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- Pagination -->
+        <div class="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+          <button id="prev-btn" disabled class="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition">Previous</button>
+          <span id="page-info" class="text-xs text-gray-500"></span>
+          <button id="next-btn" disabled class="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition">Next</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="text-center text-xs text-gray-400 py-6">SafeLink v2.0 &mdash; Community Protection Tool</footer>
+
+<script>
+const PAGE_SIZE = 10;
+let currentPage = 1;
+let totalPages = 1;
+
+// ── Helpers ──
+
+function statusBadge(score) {
+  if (score >= 85) return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700"><span class="w-1.5 h-1.5 rounded-full bg-safe"></span>Safe</span>`;
+  if (score >= 50) return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700"><span class="w-1.5 h-1.5 rounded-full bg-suspicious"></span>Suspicious</span>`;
+  return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700"><span class="w-1.5 h-1.5 rounded-full bg-dangerous"></span>Dangerous</span>`;
+}
+
+function scoreColor(score) {
+  if (score >= 85) return 'bg-safe';
+  if (score >= 50) return 'bg-suspicious';
+  return 'bg-dangerous';
+}
+
+function checkIcon(passed) {
+  return passed
+    ? '<svg class="w-4 h-4 text-green-500 mx-auto" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>'
+    : '<svg class="w-4 h-4 text-red-400 mx-auto" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>';
+}
+
+function formatAge(days) {
+  if (days === null || days === undefined) return '<span class="text-gray-400">N/A</span>';
+  if (days < 60) return `<span class="text-red-500 font-medium">${days}d</span>`;
+  if (days < 365) return `<span class="text-gray-700">${days}d</span>`;
+  return `<span class="text-gray-700">${Math.floor(days / 365)}y</span>`;
+}
+
+function timeAgo(ts) {
+  const diff = (Date.now() / 1000) - ts;
+  if (diff < 60) return 'Just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function setConnection(ok) {
+  const el = document.getElementById('connection-status');
+  el.innerHTML = ok
+    ? '<span class="w-2 h-2 rounded-full bg-safe"></span> Connected'
+    : '<span class="w-2 h-2 rounded-full bg-dangerous"></span> Offline';
+  el.className = `flex items-center gap-1.5 text-xs ${ok ? 'text-green-600' : 'text-red-500'}`;
+}
+
+// ── Stats ──
+
+async function loadStats() {
+  try {
+    const res = await fetch('/api/dashboard/stats');
+    if (!res.ok) throw new Error();
+    const d = await res.json();
+    setConnection(true);
+
+    const cards = [
+      { label: 'Total Scans', value: d.total_scans.toLocaleString(), icon: '🔍', accent: 'brand-600' },
+      { label: 'Safe', value: d.safe_count.toLocaleString(), icon: '🟢', accent: 'safe' },
+      { label: 'Suspicious', value: d.suspicious_count.toLocaleString(), icon: '🟡', accent: 'suspicious' },
+      { label: 'Dangerous', value: d.dangerous_count.toLocaleString(), icon: '🔴', accent: 'dangerous' },
+    ];
+
+    document.getElementById('stats-grid').innerHTML = cards.map(c => `
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 animate-fade-in">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">${c.label}</span>
+          <span class="text-lg">${c.icon}</span>
+        </div>
+        <p class="text-2xl font-bold text-gray-900">${c.value}</p>
+        ${c.label === 'Total Scans' ? `<p class="text-xs text-gray-400 mt-1">Avg score: <span class="font-semibold text-gray-600">${d.average_score}</span>/100</p>` : ''}
+      </div>
+    `).join('');
+  } catch {
+    setConnection(false);
+  }
+}
+
+// ── History ──
+
+async function loadHistory(page) {
+  try {
+    const res = await fetch(`/api/dashboard/history?page=${page}&page_size=${PAGE_SIZE}`);
+    if (!res.ok) throw new Error();
+    const d = await res.json();
+    setConnection(true);
+
+    currentPage = d.page;
+    totalPages = Math.max(1, Math.ceil(d.total / d.page_size));
+
+    document.getElementById('history-meta').textContent = `${d.total} record${d.total !== 1 ? 's' : ''}`;
+    document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages}`;
+    document.getElementById('prev-btn').disabled = currentPage <= 1;
+    document.getElementById('next-btn').disabled = currentPage >= totalPages;
+
+    const tbody = document.getElementById('history-body');
+    if (d.items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-gray-400">No scans yet. Try scanning a URL above.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = d.items.map(item => `
+      <tr class="hover:bg-gray-50/60 transition-colors">
+        <td class="px-6 py-3">
+          <div class="flex items-center gap-2">
+            <span class="truncate max-w-xs text-sm font-medium text-gray-800" title="${item.url}">${item.url}</span>
+            ${statusBadge(item.score)}
+          </div>
+        </td>
+        <td class="px-6 py-3">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-semibold w-8">${item.score}</span>
+            <div class="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+              <div class="h-full rounded-full score-bar ${scoreColor(item.score)}" style="width: ${item.score}%"></div>
+            </div>
+          </div>
+        </td>
+        <td class="px-6 py-3">${checkIcon(item.ssl_valid)}</td>
+        <td class="px-6 py-3 text-center text-xs">${formatAge(item.domain_age_days)}</td>
+        <td class="px-6 py-3">${checkIcon(item.google_safe)}</td>
+        <td class="px-6 py-3 text-xs text-gray-500">${timeAgo(item.scanned_at)}</td>
+      </tr>
+    `).join('');
+  } catch {
+    setConnection(false);
+  }
+}
+
+// ── Scan ──
+
+document.getElementById('scan-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = document.getElementById('scan-input');
+  const btn = document.getElementById('scan-btn');
+  const resultDiv = document.getElementById('scan-result');
+  const text = input.value.trim();
+  if (!text) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Scanning...';
+  btn.classList.add('scan-pulse');
+  resultDiv.classList.add('hidden');
+
+  try {
+    const res = await fetch('/api/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    setConnection(true);
+
+    if (data.error) {
+      resultDiv.innerHTML = `<div class="p-4 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">${data.error}</div>`;
+    } else {
+      const r = data.results[0];
+      const report = r.report.replace(/\n/g, '<br>').replace(/\*(.*?)\*/g, '<strong>$1</strong>').replace(/`(.*?)`/g, '<code class="px-1 py-0.5 bg-gray-100 rounded text-xs">$1</code>');
+      resultDiv.innerHTML = `<div class="p-4 rounded-lg bg-brand-50 border border-brand-200 text-sm text-gray-700 leading-relaxed">${report}</div>`;
+    }
+    resultDiv.classList.remove('hidden');
+
+    await loadStats();
+    await loadHistory(1);
+  } catch {
+    resultDiv.innerHTML = `<div class="p-4 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">Failed to connect to server.</div>`;
+    resultDiv.classList.remove('hidden');
+    setConnection(false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Scan';
+    btn.classList.remove('scan-pulse');
+  }
+});
+
+// ── Pagination ──
+
+document.getElementById('prev-btn').addEventListener('click', () => { if (currentPage > 1) loadHistory(currentPage - 1); });
+document.getElementById('next-btn').addEventListener('click', () => { if (currentPage < totalPages) loadHistory(currentPage + 1); });
+
+// ── Init ──
+
+loadStats();
+loadHistory(1);
+</script>
+</body>
+</html>
