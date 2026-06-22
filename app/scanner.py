@@ -1,34 +1,52 @@
 import asyncio
-import time
+import logging
 
-from app.checks import check_ssl, check_whois, check_google_safe_browsing
+from app.checks import SSLCheck, WhoisCheck, GoogleSafeBrowsingCheck, SecurityCheck
 from app.scorer import calculate_score, format_response
-from app.database import get_cached, save_result, CachedResult
-from app.config import CACHE_TTL_SECONDS
+from app.cache import CacheManager
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_CHECKS: list[SecurityCheck] = [
+    SSLCheck(),
+    WhoisCheck(),
+    GoogleSafeBrowsingCheck(),
+]
 
 
-async def scan_url(url: str) -> str:
-    cached = await get_cached(url, CACHE_TTL_SECONDS)
-    if cached:
-        reasons = cached.details.split("|") if cached.details else []
-        return format_response(url, cached.score, reasons)
+class Scanner:
+    def __init__(
+        self,
+        cache: CacheManager,
+        checks: list[SecurityCheck] | None = None,
+    ) -> None:
+        self._cache = cache
+        self._checks = checks or DEFAULT_CHECKS
 
-    ssl_result, whois_result, google_result = await asyncio.gather(
-        check_ssl(url),
-        check_whois(url),
-        check_google_safe_browsing(url),
-    )
+    async def scan(self, url: str) -> str:
+        cached = await self._cache.get(url)
+        if cached is not None:
+            score, reasons = cached
+            logger.info("cache hit url=%s score=%d", url, score)
+            return format_response(url, score, reasons)
 
-    score, reasons = calculate_score(ssl_result, whois_result, google_result)
+        results = await asyncio.gather(
+            *(check.run(url) for check in self._checks)
+        )
 
-    await save_result(CachedResult(
-        url=url,
-        score=score,
-        ssl_valid=ssl_result.valid,
-        domain_age_days=whois_result.domain_age_days,
-        google_safe=google_result.safe,
-        details="|".join(reasons),
-        scanned_at=time.time(),
-    ))
+        score, reasons = calculate_score(list(results))
 
-    return format_response(url, score, reasons)
+        ssl_valid = True
+        domain_age_days: int | None = None
+        google_safe = True
+        for r in results:
+            if r.name == "SSL":
+                ssl_valid = r.passed
+            elif r.name == "WHOIS":
+                domain_age_days = r.metadata.get("domain_age_days")
+            elif r.name == "GoogleSafeBrowsing":
+                google_safe = r.passed
+
+        await self._cache.put(url, score, ssl_valid, domain_age_days, google_safe, reasons)
+        logger.info("scan complete url=%s score=%d", url, score)
+        return format_response(url, score, reasons)

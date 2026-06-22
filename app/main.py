@@ -1,35 +1,63 @@
-import asyncio
+import logging
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
-from telegram import Update
 
-from app.database import init_db
-from app.telegram_bot import create_bot_app
+from app.cache import CacheManager
+from app.scanner import Scanner
+from app.messaging.telegram import TelegramAdapter
 from app.url_extractor import extract_urls
-from app.scanner import scan_url
+from app.exceptions import SafeLinkError
 
-bot_app = create_bot_app()
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+cache = CacheManager()
+scanner = Scanner(cache=cache)
+telegram = TelegramAdapter()
+
+NO_URL_MESSAGE = "Please send a message containing a valid link for inspection."
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    await init_db()
-    await bot_app.initialize()
-    await bot_app.start()
+async def lifespan(_app: FastAPI):
+    await cache.init()
+    await telegram.initialize()
+    logger.info("SafeLink started")
     yield
-    await bot_app.stop()
-    await bot_app.shutdown()
+    await telegram.shutdown()
+    logger.info("SafeLink stopped")
 
 
-app = FastAPI(title="SafeLink", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="SafeLink", version="2.0.0", lifespan=lifespan)
+
+
+@app.exception_handler(SafeLinkError)
+async def safelink_error_handler(_request: Request, exc: SafeLinkError):
+    logger.error("SafeLinkError: %s", exc)
+    return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request):
-    data = await request.json()
-    update = Update.de_json(data, bot_app.bot)
-    await bot_app.process_update(update)
+    payload = await request.json()
+    message = await telegram.parse_webhook(payload)
+    if message is None:
+        return {"ok": True}
+
+    urls = extract_urls(message.text)
+    if not urls:
+        await telegram.send_reply(message, NO_URL_MESSAGE)
+        return {"ok": True}
+
+    for url in urls:
+        result = await scanner.scan(url)
+        await telegram.send_reply(message, result)
+
     return {"ok": True}
 
 
@@ -39,11 +67,14 @@ async def api_scan(request: Request):
     text = body.get("text", "")
     urls = extract_urls(text)
     if not urls:
-        return {"error": "No valid URL found in the provided text"}
+        return JSONResponse(
+            status_code=400,
+            content={"error": "No valid URL found in the provided text"},
+        )
     results = []
     for url in urls:
-        result = await scan_url(url)
-        results.append({"url": url, "report": result})
+        report = await scanner.scan(url)
+        results.append({"url": url, "report": report})
     return {"results": results}
 
 
